@@ -59,7 +59,55 @@ class Laser2D:
     header.frame_id = 'laser_horizontal_front_link'
     scan_pcd.header = header
     #filling some points
-    
+
+    particles =  [self.x_max  -self.x_min, self.y_max - self.y_min] * np.random.rand(self.num_particles,2) + [[self.x_min, self.y_min]]
+    print(particles.shape)
+    particle_pcd = PointCloud()
+    #filling pointcloud header
+    header = Header()
+    header.stamp = rospy.Time.now()
+    header.frame_id = 'laser_horizontal_front_link'
+    particle_pcd.header = header
+
+    particle_pcd_chosen = PointCloud()
+    particle_pcd_chosen.header = header
+
+
+    point_queue = []
+    max_size_point_queue = int(0.5*np.pi/data.angle_increment)
+    #filling some points
+    for p in particles:
+      particle_pt = Point32(p[0], p[1], 0.0)
+
+      visited_particle_pt = [False] * self.num_particles
+      particle_pcd.points.append(particle_pt)
+
+
+    ##for scan_pt in scan_pcd.points:
+    ##  #print("norm ")
+    ##  point_queue.append(scan_pt)
+    ##  if len(point_queue) > max_size_point_queue:
+    ##    point_queue.pop(0)
+    ##    residual = 0.0
+    ##    for i in range(self.num_particles):
+    ##      
+    ##      particle_pt = Point32(particles[i][0], particles[i][1], 0.3)
+    ##      #print(scan_pt)
+    ##      #print(particle_pt)
+    ##      #print(l2_norm(scan_pt, particle_pt))
+    ##      residual = residual_for_circle(point_queue, particle_pt, 0.28, 0.1)
+    ##     # if residual > 0.0:
+    ##     #   print("residual")
+    ##     #   print(residual)
+    ##      if 0.01 < residual < 10000 and not visited_particle_pt[i]:
+    ##        visited_particle_pt[i] = True
+    ##        particle_pcd_chosen.points.append(particle_pt)
+    ##        print("residual")
+    ##        print(residual)
+    ##        print("appended particle")
+    ##        print(particle_pt)
+
+
     for r in data.ranges:
       #change infinite values to 0
       if math.isinf(r) == True:
@@ -85,35 +133,8 @@ class Laser2D:
      #   self.x_min = x
      # if y < self.y_min:
      #   self.y_min = y
-      scan_pcd.points.append(Point32(x, y, 0.0))
-
-    self.pub_scan_pcd_xy.publish(scan_pcd)
-    
-    particles =  [self.x_max  -self.x_min, self.y_max - self.y_min] * np.random.rand(self.num_particles,2) + [[self.x_min, self.y_min]]
-    print(particles.shape)
-    particle_pcd = PointCloud()
-    #filling pointcloud header
-    header = Header()
-    header.stamp = rospy.Time.now()
-    header.frame_id = 'laser_horizontal_front_link'
-    particle_pcd.header = header
-
-    particle_pcd_chosen = PointCloud()
-    particle_pcd_chosen.header = header
-
-
-    point_queue = []
-    max_size_point_queue = int(0.5*np.pi/data.angle_increment)
-    #filling some points
-    for p in particles:
-      particle_pt = Point32(p[0], p[1], 0.0)
-
-      visited_particle_pt = [False] * self.num_particles
-      particle_pcd.points.append(particle_pt)
-
-
-    for scan_pt in scan_pcd.points:
-      #print("norm ")
+      scan_pt = Point32(x, y, 0.0)
+      scan_pcd.points.append(scan_pt)
       point_queue.append(scan_pt)
       if len(point_queue) > max_size_point_queue:
         point_queue.pop(0)
@@ -135,11 +156,11 @@ class Laser2D:
             print(residual)
             print("appended particle")
             print(particle_pt)
+    
+
+    self.pub_scan_pcd_xy.publish(scan_pcd)
     self.pub_chosen_particles.publish(particle_pcd_chosen)
     self.pub_random_particles.publish(particle_pcd)
-
-    print("\nXrange: " + str(self.x_min) + "," + str(self.x_max))
-    print("\nYrange: " + str(self.y_min) + "," + str(self.y_max))
     
     #x_list = np.asarray(x_list)
     #y_list = np.asarray(y_list)

@@ -6,6 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /LaserScan1
+        - /PointCloud1
+        - /PointCloud2
       Splitter Ratio: 0.5
     Tree Height: 725
   - Class: rviz/Selection
@@ -67,9 +69,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 1776
+      Max Intensity: 2016
       Min Color: 0; 0; 0
-      Min Intensity: 72
+      Min Intensity: 104
       Name: LaserScan
       Position Transformer: XYZ
       Queue Size: 10
@@ -98,8 +100,8 @@ Visualization Manager:
       Axis: Z
       Channel Name: intensity
       Class: rviz/PointCloud
-      Color: 255; 255; 255
-      Color Transformer: Intensity
+      Color: 170; 255; 255
+      Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -112,9 +114,47 @@ Visualization Manager:
       Queue Size: 10
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.009999999776482582
+      Size (m): 0.10000000149011612
       Style: Flat Squares
       Topic: /random_particles
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /marker_tracked_object
+      Name: Marker
+      Namespaces:
+        "": true
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud
+      Color: 255; 0; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: /chosen_particles
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -147,7 +187,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 24.141664505004883
+      Distance: 30.234914779663086
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -162,10 +202,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.879797101020813
+      Pitch: 1.5397963523864746
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.4054064750671387
+      Yaw: 4.3554253578186035
     Saved: ~
 Window Geometry:
   Displays:
