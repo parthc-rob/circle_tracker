@@ -12,6 +12,8 @@ from std_msgs.msg import Header
 import numpy as np
 import matplotlib.pyplot as plt
 
+from sklearn.neighbors.kde import KernelDensity
+
 # Fixing random state for reproducibility
 np.random.seed(19680801)
 
@@ -108,10 +110,34 @@ class Laser2D:
     ##        print(particle_pt)
 
 
+      ############## Kernel density estimation - 1D clustering, directly operate on ranges instead of points to find local minima
+
+    fig = plt.figure(figsize=(6, 4))
+    ax = fig.add_subplot(111)
+
+    # Plot the function
+    ax.plot(x_list, y_list, 'b-', label="f(x)")
+
+    # Plot the minima
+    xmins = np.array([xmin_global[0], xmin_local])
+    ax.plot(xmins, f(xmins), 'go', label="Minima")
+
+    # Plot the roots
+    roots = np.array([root.x, root2.x])
+    ax.plot(roots, f(roots), 'kv', label="Roots")
+
+    # Decorate the figure
+    ax.legend(loc='best')
+    ax.set_xlabel('x')
+    ax.set_ylabel('f(x)')
+    ax.axhline(0, color='gray')
+    plt.show()
+
     for r in data.ranges:
       #change infinite values to 0
       if math.isinf(r) == True:
         r = 0
+
       x = (r)*math.cos(angle)#+(-90.0*3.1416/180.0)))                         
       y = (r)*math.sin(angle)# + (-90.0*3.1416/180.0)))
       boundary = 500
@@ -119,8 +145,8 @@ class Laser2D:
           x=0
           y=0
       #cv2.line(self.frame,(250, 250),(x+250,y+250),(255,0,0),2)
-      #x_list.append(angle)
-      #y_list.append(r)
+      x_list.append(angle)
+      y_list.append(r)
       #x_list.append(x)
       #y_list.append(y)
       angle= angle + data.angle_increment
