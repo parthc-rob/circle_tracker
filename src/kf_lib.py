@@ -95,4 +95,4 @@ class TrackedObject:
     #print(self.state[3])
     #print(float(self.state[3]))
 
-    return (self.state[2]**2 + self.state[3]**2) ** 0.5
+    return (self.state[2][0]**2 + self.state[3][0]**2) ** 0.5

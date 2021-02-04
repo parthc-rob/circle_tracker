@@ -15,6 +15,8 @@ from visualization_msgs.msg import Marker
 
 from circle_detect import *
 
+from munkres import Munkres, print_matrix
+
 # Fixing random state for reproducibility
 np.random.seed(19680801)
 
@@ -41,7 +43,7 @@ class Laser2D:
       self.y_min = -4#99999.0
 
       self.num_particles = 100
-      self.marker_lifetime = 0.05 
+      self.marker_lifetime = 0.02 
 
       self.radius_max = 0.2
       self.radius_min = 0.1
@@ -156,6 +158,16 @@ class Laser2D:
 #      marker_.ns = "bucket"
 #      self.pub_marker_tracked_object.publish(marker_)
 
+  def populate_assignment(self, objects, z_list):
+    assignment_matrix = np.empty([len(objects), len(z_list)], dtype=float)
+  
+    for iter_obj in range(len(objects)):
+      for iter_z in range(len(z_list)):
+        obj = objects[iter_obj]
+        z = z_list[iter_z]
+        assignment_matrix[iter_obj][iter_z] = l2_norm_xy(obj.state[0][0], obj.state[1][0], z.a, z.b) 
+    return assignment_matrix
+
   def callback(self, data):
 
     segments = get_segments(preprocess_scan(data)) 
@@ -191,13 +203,13 @@ class Laser2D:
             velocity =  l2_norm_xy(z.a, z.b, z_old.a, z_old.b)/dt
             #self.publish_track_marker(z.a, z.b, z.radius,
             #    velocity, np.random.randint(999))
-            self.publish_track_marker(z.a, z.b, z.radius,
-                velocity, np.random.randint(999))
+            #self.publish_track_marker(z.a, z.b, z.radius,
+            #    velocity, np.random.randint(999))
             if velocity > self.velocity_gate: # only print for moving objects
               print( " Object at ( %.2f, %.2f ) has velocity %.2f m/s"%(z.a, z.b,velocity))
 
 
-    self.last_measurement = z_list   
+    self.last_measurement = z_list
 
     ## Kalman filter based approach
     if len(self.objects) == 0:
@@ -208,42 +220,72 @@ class Laser2D:
         obj.update_A(dt)
         random_id += 1
         self.objects.append(obj)
-    
+
     else:
-      # quick and dirty distance gating-based matching 
+      #if len(self.objects) < len(z_list)
+      #### Hungarian / Munkres matching
+      z_unassociated = z_list
+      assignment_matrix = self.populate_assignment(self.objects, z_list) 
+      #print("assignment matrix")
+      #print(assignment_matrix)
+      #print(np.argwhere(assignment_matrix < 0.3))
+      object_assignments = np.argwhere(assignment_matrix < self.distance_gate)
+      for idx in object_assignments:
+        self.objects[idx[0]].measurement_update(z_list[idx[1]].a, z_list[idx[1]].b)
+        self.objects[idx[0]].prediction_update(dt)
+        obj = self.objects[idx[0]]
+        self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)
+        del(z_unassociated[idx[1]])
+
+      for measure in z_unassociated:
+        random_id = np.random.randint(999)
+        #print("new track: " + str(random_id) + " at xy " + str(measure.a) + ", " + str(measure.b))
+        obj = TrackedObject()
+        obj.initialize(measure.a, measure.b, random_id)
+        obj.radius = measure.radius
+        obj.update_A(dt)
+        self.objects.append(obj)
+       
+
+      ##m = Munkres()
+      ##indexes = m.compute(assignment_matrix)
+      ##print(indexes)
+
+
+      #####
+      ## quick and dirty distance gating-based matching 
       
-      for measure in z_list:
-        associated = False
-        for obj in self.objects:
-          if associated:
-            break
-          if obj.distance_from_state(measure.a, measure.b) < 1.0:
-            #print("associate xy (%.2f, %.2f) with ID %d at xy (%.2f, %.2f) at distance %.2f"
-            #      %(measure.a, measure.b, obj.id, obj.state[0][0], obj.state[1][0], obj.distance_from_state(measure.a, measure.b)))
+      #for measure in z_list:
+      #  associated = False
+      #  for obj in self.objects:
+      #    if associated:
+      #      break
+      #    if obj.distance_from_state(measure.a, measure.b) < 1.0:
+      #      #print("associate xy (%.2f, %.2f) with ID %d at xy (%.2f, %.2f) at distance %.2f"
+      #      #      %(measure.a, measure.b, obj.id, obj.state[0][0], obj.state[1][0], obj.distance_from_state(measure.a, measure.b)))
 
-            #print(obj.distance_from_state(measure.a, measure.b))
-            obj.measurement_update(measure.a, measure.b)
-            obj.radius = measure.radius
-            #### Show Kalman track
-            #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)           
+      #      #print(obj.distance_from_state(measure.a, measure.b))
+      #      obj.measurement_update(measure.a, measure.b)
+      #      obj.radius = measure.radius
+      #      #### Show Kalman track
+      #      #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)           
 
-            obj.prediction_update(dt)
-            associated = True 
+      #      obj.prediction_update(dt)
+      #      associated = True 
 
-        if not associated:
-          random_id = np.random.randint(999)
-          #print("new track: " + str(random_id) + " at xy " + str(measure.a) + ", " + str(measure.b))
-          obj = TrackedObject()
-          obj.initialize(measure.a, measure.b, random_id)
-          obj.radius = measure.radius
-          obj.update_A(dt)
-          self.objects.append(obj)
+      #  if not associated:
+      #    random_id = np.random.randint(999)
+      #    #print("new track: " + str(random_id) + " at xy " + str(measure.a) + ", " + str(measure.b))
+      #    obj = TrackedObject()
+      #    obj.initialize(measure.a, measure.b, random_id)
+      #    obj.radius = measure.radius
+      #    obj.update_A(dt)
+      #    self.objects.append(obj)
           #### Show Kalman track
 
-          #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)
-
-    for obj in self.objects:
-      obj.prediction_update(dt)
+      
+    #for obj in self.objects:
+    #  obj.prediction_update(dt)
 
 if __name__ == '__main__':
     x = Laser2D()

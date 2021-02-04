@@ -1,5 +1,6 @@
 #!usr/bin/env python
 # credit : https://github.com/AlliedToasters/circle-fit
+# ref for Hyperfit algorithm: https://arxiv.org/pdf/1508.02145.pdf
 import numpy as np
 from scipy import optimize
 from matplotlib import pyplot as plt, cm, colors
