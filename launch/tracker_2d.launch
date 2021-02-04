@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find
+circle_tracker)/launch/tracker_2d_viz.rviz"/>
+  <node name="object_tracker" pkg="circle_tracker" type="scan_process.py" output="screen"/>
+</launch>

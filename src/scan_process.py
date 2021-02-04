@@ -7,25 +7,27 @@ import cv2
 from sensor_msgs.msg import LaserScan
 
 from sensor_msgs.msg import PointCloud
-from geometry_msgs.msg import Point32
-from std_msgs.msg import Header
+from geometry_msgs.msg import Point32, Quaternion, Pose, Point, Vector3, PoseStamped, PoseWithCovariance, TwistWithCovariance 
+from std_msgs.msg import Header, ColorRGBA
 import numpy as np
 import matplotlib.pyplot as plt
+from visualization_msgs.msg import Marker
+
+from circle_detect import *
 
 # Fixing random state for reproducibility
 np.random.seed(19680801)
 
-def l2_norm(p1, p2):
-  return ( (p1.x - p2.x)**2 + (p1.y - p2.y)**2 )**0.5
-
-def residual_for_circle(point_queue, particle_pt, radius_threshold, radius_variance):
-  residual = 0.0
-  for pt in point_queue:
-    norm = l2_norm(pt, particle_pt)
-    if radius_threshold - radius_variance < norm < radius_threshold + radius_variance:
-      residual += norm
-  return residual
-
+#def l2_norm(p1, p2):
+#  return ( (p1.x - p2.x)**2 + (p1.y - p2.y)**2 )**0.5
+#
+#def residual_for_circle(point_queue, particle_pt, radius_threshold, radius_variance):
+#  residual = 0.0
+#  for pt in point_queue:
+#    norm = l2_norm(pt, particle_pt)
+#    if radius_threshold - radius_variance < norm < radius_threshold + radius_variance:
+#      residual += norm
+#  return residual
 
 class Laser2D:
 
@@ -39,140 +41,209 @@ class Laser2D:
       self.y_min = -4#99999.0
 
       self.num_particles = 100
+      self.marker_lifetime = 0.05 
+
+      self.radius_max = 0.2
+      self.radius_min = 0.1
+      self.distance_gate = 0.4
+      self.velocity_gate = 1.0 
+      self.full_velocity = 3.0
+
+      self.objects = []
+      self.last_measure_time_sec = None 
+
+      self.last_measurement = []
+
       rospy.init_node('laser_listener', anonymous=True)
       rospy.Subscriber("/laser_horizontal_front", LaserScan, self.callback)
       self.pub_random_particles = rospy.Publisher('random_particles', PointCloud, queue_size=10)
       self.pub_chosen_particles = rospy.Publisher('chosen_particles', PointCloud, queue_size=10)
       self.pub_scan_pcd_xy = rospy.Publisher('laser_horizontal_pcd', PointCloud)
+      self.pub_tracked_object = rospy.Publisher('tracked_object', PoseWithCovariance, queue_size=10)
+      self.pub_tracked_object_twist = rospy.Publisher('tracked_object_twist', TwistWithCovariance, queue_size=10)
+      self.pub_marker_detected_object = rospy.Publisher('marker_detected_object', Marker, queue_size=10)
+      self.pub_marker_tracked_object = rospy.Publisher('marker_tracked_object', Marker, queue_size=10)
+
       rospy.spin()
 
+  def publish_tracked_circle(self, x, y, radius):
+    circle = PoseWithCovariance(
+      pose = Pose(
+        position = Point(x, y, radius),
+        orientation = Quaternion(0, 0, 0, 1)
+      )
+    )
+    #circle.pose.position.x = x
+    #circle.pose.position.x = y
+    #circle.pose.position.z = radius
+    self.pub_tracked_object.publish(circle)
+
+  def publish_circle_marker(self, x, y, radius, marker_id):
+
+    ### Pose Marker
+    marker_ = Marker(
+        type=Marker.CYLINDER,
+        action=Marker.ADD,
+        id=marker_id,
+        lifetime=rospy.Duration(self.marker_lifetime),
+        pose=Pose(Point(x, y, 0.0), Quaternion(0,0,0,1)),
+        scale=Vector3(radius, radius, 3.0),
+        header=Header(frame_id='laser_horizontal_front_link', stamp = rospy.Time.now()),
+        color=ColorRGBA(1.0, 0.2, 0.2, 1.0))
+    marker_.ns = "bucket"
+    self.pub_marker_detected_object.publish(marker_)
+    #print("publishing marker)")
+
+  def publish_detection_marker(self, x, y, radius, marker_id):
+
+    ### Pose Marker
+    marker_ = Marker(
+        type=Marker.CYLINDER,
+        action=Marker.ADD,
+        id=marker_id,
+        lifetime=rospy.Duration(self.marker_lifetime),
+        pose=Pose(Point(x, y, 0.0), Quaternion(0,0,0,1)),
+        scale=Vector3(radius, radius, 3.0),
+        header=Header(frame_id='laser_horizontal_front_link', stamp = rospy.Time.now()),
+        color=ColorRGBA(1.0, 0.2, 0.2, 1.0))
+    marker_.ns = "bucket"
+    self.pub_marker_tracked_object.publish(marker_)
+    #print("publishing marker)")
+ 
+  def publish_track_marker(self, x, y, radius, velocity, marker_id):
+    
+    vel_intensity = 1.0
+    #print(velocity)
+    if velocity/self.full_velocity < 1.0: # color code velocity
+      vel_intensity = velocity/self.full_velocity
+
+    ### Pose Marker
+    marker_ = Marker(
+        type=Marker.CYLINDER,
+        action=Marker.ADD,
+        id=marker_id,
+        lifetime=rospy.Duration(1),
+        pose=Pose(Point(x, y, 0.0), Quaternion(0,0,0,1)),
+        scale=Vector3(radius, radius, 3.0),
+        header=Header(frame_id='laser_horizontal_front_link', stamp = rospy.Time.now()),
+        color=ColorRGBA(0.2, vel_intensity, 0.2, 1.0))
+    marker_.ns = "bucket"
+    self.pub_marker_tracked_object.publish(marker_)
+
+    obj_marker_ = Marker(
+            type=Marker.TEXT_VIEW_FACING,
+            action=Marker.ADD,
+            id=marker_id + 99,
+            ns="text",
+            lifetime=rospy.Duration(self.marker_lifetime),
+            pose=Pose(Point(x, y, 5.0), Quaternion(0,0,0,1)),
+            scale = Vector3(4, 4, 40.0),
+            text= "x,y: ", #+ str(x) + ", "+str(y) + " vel(m/s): "+str(velocity),
+            header=Header(frame_id='laser_horizontal_front_link'),
+            color=ColorRGBA(0.0, 1.0, 0.0, 1))
+
+    self.pub_marker_tracked_object.publish(marker_)
+#  ## velocity arrow
+#    marker_ = Marker(
+#        type=Marker.ARROW,
+#        action=Marker.ADD,
+#        id=marker_id,
+#        lifetime=rospy.Duration(self.marker_lifetime),
+#        pose=Pose(Point(x, y, 0.0), Quaternion(0,0,0,1)),
+#        scale=Vector3(radius, radius, 3.0),
+#          header=Header(frame_id='laser_horizontal_front_link', stamp = rospy.Time.now()),
+#          color=ColorRGBA(1.0, 0.2, 0.2, 1.0))
+#      marker_.ns = "bucket"
+#      self.pub_marker_tracked_object.publish(marker_)
+
   def callback(self, data):
-    #print "hello"
-    self.frame = np.zeros((500, 500,3), np.uint8)
-    angle = data.angle_min
-    x_list = []
-    y_list = []
-    scan_pcd = PointCloud()
-    #filling pointcloud header
-    header = Header()
-    header.stamp = rospy.Time.now()
-    header.frame_id = 'laser_horizontal_front_link'
-    scan_pcd.header = header
-    #filling some points
 
-    particles =  [self.x_max  -self.x_min, self.y_max - self.y_min] * np.random.rand(self.num_particles,2) + [[self.x_min, self.y_min]]
-    print(particles.shape)
-    particle_pcd = PointCloud()
-    #filling pointcloud header
-    header = Header()
-    header.stamp = rospy.Time.now()
-    header.frame_id = 'laser_horizontal_front_link'
-    particle_pcd.header = header
+    segments = get_segments(preprocess_scan(data)) 
+    random_id = 920
+    z_list = [] # list of z : measurments for cylindrical objects 
 
-    particle_pcd_chosen = PointCloud()
-    particle_pcd_chosen.header = header
+    for s in segments:
+      c = detect_circle(s)
+      #print("circle x,y,radius : %f, %f, %f" %(c.a, c.b, c.radius))
 
+      if c.radius < self.radius_max and c.radius > self.radius_min:
+        z_list.append(c)
+        #print("BUCKET DETECTED at : %f, %f, %f" %(c.a, c.b, c.radius))
+        self.publish_circle_marker(c.a, c.b, c.radius, random_id)
+        self.publish_tracked_circle(c.a, c.b, c.radius)
+        #self.publish_marker(c.a, c.b, random_id)
+      random_id += 1
 
-    point_queue = []
-    max_size_point_queue = int(0.5*np.pi/data.angle_increment)
-    #filling some points
-    for p in particles:
-      particle_pt = Point32(p[0], p[1], 0.0)
+    random_id = 0 
+    dt = 0.03 
+    if self.last_measure_time_sec is not None:
+      dt = rospy.get_time() - self.last_measure_time_sec
+    self.last_measure_time_sec = rospy.get_time()
 
-      visited_particle_pt = [False] * self.num_particles
-      particle_pcd.points.append(particle_pt)
+    ## ## Approach 1
+    ##print("measurement list")
+    ##print(len(z_list))
 
-
-    ##for scan_pt in scan_pcd.points:
-    ##  #print("norm ")
-    ##  point_queue.append(scan_pt)
-    ##  if len(point_queue) > max_size_point_queue:
-    ##    point_queue.pop(0)
-    ##    residual = 0.0
-    ##    for i in range(self.num_particles):
-    ##      
-    ##      particle_pt = Point32(particles[i][0], particles[i][1], 0.3)
-    ##      #print(scan_pt)
-    ##      #print(particle_pt)
-    ##      #print(l2_norm(scan_pt, particle_pt))
-    ##      residual = residual_for_circle(point_queue, particle_pt, 0.28, 0.1)
-    ##     # if residual > 0.0:
-    ##     #   print("residual")
-    ##     #   print(residual)
-    ##      if 0.01 < residual < 10000 and not visited_particle_pt[i]:
-    ##        visited_particle_pt[i] = True
-    ##        particle_pcd_chosen.points.append(particle_pt)
-    ##        print("residual")
-    ##        print(residual)
-    ##        print("appended particle")
-    ##        print(particle_pt)
+    if len(self.last_measurement) > 0:
+      for z in z_list:
+        for z_old in self.last_measurement:
+          if l2_norm_xy(z.a, z.b, z_old.a, z_old.b) < self.distance_gate:
+            velocity =  l2_norm_xy(z.a, z.b, z_old.a, z_old.b)/dt
+            #self.publish_track_marker(z.a, z.b, z.radius,
+            #    velocity, np.random.randint(999))
+            self.publish_track_marker(z.a, z.b, z.radius,
+                velocity, np.random.randint(999))
+            if velocity > self.velocity_gate: # only print for moving objects
+              print( " Object at ( %.2f, %.2f ) has velocity %.2f m/s"%(z.a, z.b,velocity))
 
 
-    for r in data.ranges:
-      #change infinite values to 0
-      if math.isinf(r) == True:
-        r = 0
-      x = (r)*math.cos(angle)#+(-90.0*3.1416/180.0)))                         
-      y = (r)*math.sin(angle)# + (-90.0*3.1416/180.0)))
-      boundary = 500
-      if y > boundary or y < -boundary or x<-boundary or x>boundary:
-          x=0
-          y=0
-      #cv2.line(self.frame,(250, 250),(x+250,y+250),(255,0,0),2)
-      #x_list.append(angle)
-      #y_list.append(r)
-      #x_list.append(x)
-      #y_list.append(y)
-      angle= angle + data.angle_increment
-      #cv2.circle(self.frame, (250, 250), 2, (255, 255, 0))
-     # if x > self.x_max:
-     #   self.x_max = x
-     # if y > self.y_max:
-     #   self.y_max = x
-     # if x < self.x_min:
-     #   self.x_min = x
-     # if y < self.y_min:
-     #   self.y_min = y
-      scan_pt = Point32(x, y, 0.0)
-      scan_pcd.points.append(scan_pt)
-      point_queue.append(scan_pt)
-      if len(point_queue) > max_size_point_queue:
-        point_queue.pop(0)
-        residual = 0.0
-        for i in range(self.num_particles):
-          
-          particle_pt = Point32(particles[i][0], particles[i][1], 0.3)
-          #print(scan_pt)
-          #print(particle_pt)
-          #print(l2_norm(scan_pt, particle_pt))
-          residual = residual_for_circle(point_queue, particle_pt, 0.28, 0.1)
-         # if residual > 0.0:
-         #   print("residual")
-         #   print(residual)
-          if 0.01 < residual < 10000 and not visited_particle_pt[i]:
-            visited_particle_pt[i] = True
-            particle_pcd_chosen.points.append(particle_pt)
-            print("residual")
-            print(residual)
-            print("appended particle")
-            print(particle_pt)
+    self.last_measurement = z_list   
+
+    ## Kalman filter based approach
+    if len(self.objects) == 0:
+      for measure in z_list:
+        #print("init track: " + str(random_id))
+        obj = TrackedObject()
+        obj.initialize(measure.a, measure.b, random_id)
+        obj.update_A(dt)
+        random_id += 1
+        self.objects.append(obj)
     
+    else:
+      # quick and dirty distance gating-based matching 
+      
+      for measure in z_list:
+        associated = False
+        for obj in self.objects:
+          if associated:
+            break
+          if obj.distance_from_state(measure.a, measure.b) < 1.0:
+            #print("associate xy (%.2f, %.2f) with ID %d at xy (%.2f, %.2f) at distance %.2f"
+            #      %(measure.a, measure.b, obj.id, obj.state[0][0], obj.state[1][0], obj.distance_from_state(measure.a, measure.b)))
 
-    self.pub_scan_pcd_xy.publish(scan_pcd)
-    self.pub_chosen_particles.publish(particle_pcd_chosen)
-    self.pub_random_particles.publish(particle_pcd)
-    
-    #x_list = np.asarray(x_list)
-    #y_list = np.asarray(y_list)
-    #N = len(x_list)
-    #colors = np.random.rand(N)
-    #area = 5#(30 * np.random.rand(N))**2  # 0 to 15 point radii
+            #print(obj.distance_from_state(measure.a, measure.b))
+            obj.measurement_update(measure.a, measure.b)
+            obj.radius = measure.radius
+            #### Show Kalman track
+            #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)           
 
-    #plt.scatter(x_list, y_list, s=area)#, c=colors, alpha=0.5)
-    #plt.show()
-    #cv2.imshow('frame',self.frame)
-    #cv2.waitKey(1)
+            obj.prediction_update(dt)
+            associated = True 
 
+        if not associated:
+          random_id = np.random.randint(999)
+          #print("new track: " + str(random_id) + " at xy " + str(measure.a) + ", " + str(measure.b))
+          obj = TrackedObject()
+          obj.initialize(measure.a, measure.b, random_id)
+          obj.radius = measure.radius
+          obj.update_A(dt)
+          self.objects.append(obj)
+          #### Show Kalman track
+
+          #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)
+
+    for obj in self.objects:
+      obj.prediction_update(dt)
 
 if __name__ == '__main__':
     x = Laser2D()
