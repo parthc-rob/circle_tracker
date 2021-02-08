@@ -169,8 +169,8 @@ class Laser2D:
       if c.radius < self.radius_max and c.radius > self.radius_min:
         z_list.append(c)
         #print("BUCKET DETECTED at : %f, %f, %f" %(c.a, c.b, c.radius))
-        self.publish_circle_marker(c.a, c.b, c.radius, random_id)
-        self.publish_tracked_circle(c.a, c.b, c.radius)
+        ###self.publish_circle_marker(c.a, c.b, c.radius, random_id)
+        ####self.publish_tracked_circle(c.a, c.b, c.radius)
         #self.publish_marker(c.a, c.b, random_id)
       random_id += 1
 
@@ -191,10 +191,10 @@ class Laser2D:
             velocity =  l2_norm_xy(z.a, z.b, z_old.a, z_old.b)/dt
             #self.publish_track_marker(z.a, z.b, z.radius,
             #    velocity, np.random.randint(999))
-            self.publish_track_marker(z.a, z.b, z.radius,
-                velocity, np.random.randint(999))
-            if velocity > self.velocity_gate: # only print for moving objects
-              print( " Object at ( %.2f, %.2f ) has velocity %.2f m/s"%(z.a, z.b,velocity))
+            #self.publish_track_marker(z.a, z.b, z.radius,
+            #    velocity, np.random.randint(999))
+            #if velocity > self.velocity_gate: # only print for moving objects
+            #  print( " Object at ( %.2f, %.2f ) has velocity %.2f m/s"%(z.a, z.b,velocity))
 
 
     self.last_measurement = z_list   
@@ -217,15 +217,18 @@ class Laser2D:
         for obj in self.objects:
           if associated:
             break
-          if obj.distance_from_state(measure.a, measure.b) < 1.0:
-            #print("associate xy (%.2f, %.2f) with ID %d at xy (%.2f, %.2f) at distance %.2f"
-            #      %(measure.a, measure.b, obj.id, obj.state[0][0], obj.state[1][0], obj.distance_from_state(measure.a, measure.b)))
+          if obj.distance_from_state(measure.a, measure.b) < 0.5:
+            #print("associate xy (%.2f, %.2f) with ID %d at xy (%.2f, %.2f) at distance %.2f" #      %(measure.a, measure.b, obj.id, obj.state[0][0], obj.state[1][0], obj.distance_from_state(measure.a, measure.b)))
 
             #print(obj.distance_from_state(measure.a, measure.b))
+            print("state")
+            print(obj.state)
             obj.measurement_update(measure.a, measure.b)
+            print("updated")
+            print(obj.state)
             obj.radius = measure.radius
             #### Show Kalman track
-            #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)           
+            #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, 4, obj.id)           
 
             obj.prediction_update(dt)
             associated = True 
@@ -240,10 +243,13 @@ class Laser2D:
           self.objects.append(obj)
           #### Show Kalman track
 
-          #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, obj.get_velocity(), obj.id)
+          #self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, 4, obj.id)
 
     for obj in self.objects:
       obj.prediction_update(dt)
+      self.publish_track_marker(obj.state[0][0], obj.state[1][0], obj.radius, 4, obj.id)           
+
+
 
 if __name__ == '__main__':
     x = Laser2D()

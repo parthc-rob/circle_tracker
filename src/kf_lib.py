@@ -34,7 +34,7 @@ class TrackedObject:
     #state uncertainty
     self.P = np.diag([1e-1, 1e-1, 1e-3, 1e-3])
     #time step, update with laserscan
-    self.dt = 0.03 
+    self.dt = 0.03
 
     #process model
     self.A = np.asarray([[1.0, 0.0, self.dt, 0.0],
@@ -53,8 +53,8 @@ class TrackedObject:
     #process noise, assume x,y noise independent
     self.Q = np.asarray([[1e-4, 0.0, 0.0, 0.0],
                       [0.0, 1e-4, 0.0, 0.0],
-                      [0.0, 0.0, 1e-6, 0.0],
-                      [0.0, 0.0, 0.0, 1e-6]])
+                      [0.0, 0.0, 5e-3, 0.0],
+                      [0.0, 0.0, 0.0, 5e-3]])
 
   def initialize(self, x, y, id):
     self.state[0] = x 
@@ -70,12 +70,32 @@ class TrackedObject:
 
   def measurement_update(self, x, y): 
     S = np.matmul(np.matmul(self.H, self.P), self.H.T) + self.R
-    K = np.matmul(self.P, np.matmul(self.H.T, np.linalg.pinv(S)))
+    K = np.matmul(np.matmul(self.P, self.H.T), np.linalg.pinv(S))
+
+    #### S = H * P * H.T + R
+    #### K = P * H.T * inv(S)
+    #### x_dash = Z - H * x
+    #### x = x + K * x_dash
+    #### 
 
     #update estimate via measurement
-    Z = np.array([x,y]).T
+    print("x, y, Z")
+    print(x)
+    print(y)
+    Z = np.array([[x,y]]).T
+    print(Z)
+    
+    #print("H, state shape")
+    #print(self.H.shape)
+    #print(self.state)
+    z_dash = np.matmul(self.H, self.state)
     y = Z - np.matmul(self.H, self.state)
+    print(Z.shape)
+    print("y, k shape")
+    print(y.shape)
+    print(self.state)
     self.state = self.state + np.matmul(K, y)
+    print(self.state)
 
     self.P = np.matmul( np.eye(4) - np.matmul(K, self.H) , self.P)
   
